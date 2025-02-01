@@ -36,13 +36,12 @@ local function wintab_handle_click(minwid, clicks, button, modifiers) ---@diagno
   --print('mouse click', id, clicks, button, modifiers)
   vim.cmd.buffer(id)
 end
-_G.wintab_handle_click = wintab_handle_click
 
 local function adjust_by_width(items, width) return items end
 
 ---@param components wintab.Component[]
 ---@return string
-local function winbar(components)
+function M.winbar(components)
   local renders = {}
   local bufnr = vim.api.nvim_get_current_buf()
   local total_width = 0
@@ -73,8 +72,10 @@ M.wintab = function()
   for _, bufnr in ipairs(bufnrs) do
     table.insert(components, Component.new(bufnr))
   end
-  return winbar(components)
+  return M.winbar(components)
 end
+
 _G.wintab = M.wintab
+_G.wintab_handle_click = wintab_handle_click
 
 return M
