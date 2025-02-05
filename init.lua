@@ -134,6 +134,8 @@ function M.init(key, win)
         })
         winid = vim.api.nvim_get_current_win()
         vim.w[winid].winbar = vim.wo[winid].winbar
+        -- NOTE: 用于修正在不同的 tabpage 删除缓冲时触发的窗口关闭
+        vim.schedule(function() pcall(vim.api.nvim_win_close, tonumber(event.match), false) end)
       end
     end,
   })
