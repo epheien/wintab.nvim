@@ -67,13 +67,26 @@ function M.winbar(components)
   return table.concat(renders, separator) .. '%#MyTabLineFill#'
 end
 
-M.wintab = function()
-  local bufnrs = utils.get_valid_buffers()
-  local components = {}
-  for _, bufnr in ipairs(bufnrs) do
-    table.insert(components, Component.new(bufnr))
+M.callback = {
+  default = function()
+    local bufnrs = utils.get_valid_buffers()
+    local components = {}
+    for _, bufnr in ipairs(bufnrs) do
+      table.insert(components, Component.new(bufnr))
+    end
+    return components
+  end,
+}
+
+function M.register_callback(key, callback) M.callback[key] = callback end
+
+M.wintab = function(key)
+  local func = M.callback[key or 'default']
+  if type(func) == 'function' then
+    local components = func()
+    return M.winbar(components or {})
   end
-  return M.winbar(components)
+  return ''
 end
 
 function M.init()
@@ -95,7 +108,7 @@ function M.init()
       end
     end,
   })
-  vim.wo.winbar = '%!v:lua.wintab()'
+  vim.wo.winbar = '%!v:lua.wintab("default")'
 end
 
 _G.wintab = M.wintab
