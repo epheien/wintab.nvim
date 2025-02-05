@@ -92,18 +92,39 @@ end
 ---@param key? string
 ---@param win? integer
 function M.init(key, win)
+  key = key or 'default'
   local winid = win or vim.api.nvim_get_current_win()
+  local callback = M.callback[key]
+  if not callback then
+    return
+  end
   vim.api.nvim_create_autocmd('WinClosed', {
     group = wintab_augroup,
     callback = function(event)
       -- NOTE: event.match 的类型为 string
       if tonumber(event.match) == winid then
-        local bufnr = vim.fn.bufnr('#')
+        local match_bufnr = vim.api.nvim_win_get_buf(winid)
+        local alter_bufnr = vim.fn.bufnr('#')
+        local target_bufnr = -1
         -- 如果没有可用的轮转缓冲区的话, 那这个窗口就直接关闭就好了
-        if not vim.api.nvim_buf_is_valid(bufnr) then
+        local components = callback()
+        for _, component in ipairs(components) do
+          if component.bufnr == alter_bufnr and vim.api.nvim_buf_is_valid(component.bufnr) then
+            target_bufnr = component.bufnr
+            goto out
+          end
+        end
+        for _, component in ipairs(components) do
+          if component.bufnr ~= match_bufnr and vim.api.nvim_buf_is_valid(component.bufnr) then
+            target_bufnr = component.bufnr
+            goto out
+          end
+        end
+        if target_bufnr < 0 then
           return
         end
-        vim.api.nvim_open_win(bufnr, true, {
+        ::out::
+        vim.api.nvim_open_win(target_bufnr, true, {
           split = 'left',
           win = tonumber(event.match),
         })
@@ -114,7 +135,7 @@ function M.init(key, win)
   })
   vim.api.nvim_set_option_value(
     'winbar',
-    string.format('%%!v:lua.wintab("%s")', key or 'default'),
+    string.format('%%!v:lua.wintab("%s")', key),
     { win = winid }
   )
 end
