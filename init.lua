@@ -105,6 +105,7 @@ function M.init(key, win)
         end
         vim.api.nvim_open_win(bufnr, true, {
           split = 'left',
+          win = tonumber(event.match),
         })
         winid = vim.api.nvim_get_current_win()
       end
