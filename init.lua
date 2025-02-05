@@ -89,8 +89,10 @@ M.wintab = function(key)
   return ''
 end
 
-function M.init()
-  local winid = vim.api.nvim_get_current_win()
+---@param key? string
+---@param win? integer
+function M.init(key, win)
+  local winid = win or vim.api.nvim_get_current_win()
   vim.api.nvim_create_autocmd('WinClosed', {
     group = wintab_augroup,
     callback = function(event)
@@ -108,7 +110,11 @@ function M.init()
       end
     end,
   })
-  vim.wo.winbar = '%!v:lua.wintab("default")'
+  vim.api.nvim_set_option_value(
+    'winbar',
+    string.format('%%!v:lua.wintab("%s")', key or 'default'),
+    { win = winid }
+  )
 end
 
 _G.wintab = M.wintab
