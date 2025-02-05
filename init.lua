@@ -7,14 +7,17 @@ local wintab_augroup = vim.api.nvim_create_augroup('wintab', {})
 
 ---@class wintab.Component
 ---@field bufnr integer
+---@field label string
 local Component = {}
 Component.__index = Component
 M.Component = Component
 
 ---@param bufnr integer
-function Component.new(bufnr)
+---@param label? string
+function Component.new(bufnr, label)
   local self = setmetatable({}, Component)
   self.bufnr = bufnr
+  self.label = label or ''
   return self
 end
 
@@ -22,7 +25,8 @@ end
 ---@return string
 ---@return integer
 function Component:render(active)
-  local label = string.format(' %s ', vim.api.nvim_buf_get_name(self.bufnr))
+  local label = self.label ~= '' and self.label
+    or string.format(' %s ', vim.api.nvim_buf_get_name(self.bufnr))
   local hl = active and 'MyTabLineSel' or 'MyTabLineNotSel'
   local click = string.format('%%%d@v:lua.wintab_handle_click@', self.bufnr)
   return string.format('%s%%#%s#%s', click, hl, label), vim.api.nvim_strwidth(label)
