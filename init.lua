@@ -3,6 +3,7 @@ local utils = require('wintab.utils')
 local M = {}
 
 local separator = ''
+local wintab_augroup = vim.api.nvim_create_augroup('wintab', {})
 
 ---@class wintab.Component
 ---@field bufnr integer
@@ -73,6 +74,28 @@ M.wintab = function()
     table.insert(components, Component.new(bufnr))
   end
   return M.winbar(components)
+end
+
+function M.init()
+  local winid = vim.api.nvim_get_current_win()
+  vim.api.nvim_create_autocmd('WinClosed', {
+    group = wintab_augroup,
+    callback = function(event)
+      -- NOTE: event.match 的类型为 string
+      if tonumber(event.match) == winid then
+        local bufnr = vim.fn.bufnr('#')
+        -- 如果没有可用的轮转缓冲区的话, 那这个窗口就直接关闭就好了
+        if not vim.api.nvim_buf_is_valid(bufnr) then
+          return
+        end
+        vim.api.nvim_open_win(bufnr, true, {
+          split = 'left',
+        })
+        winid = vim.api.nvim_get_current_win()
+      end
+    end,
+  })
+  vim.wo.winbar = '%!v:lua.wintab()'
 end
 
 _G.wintab = M.wintab
