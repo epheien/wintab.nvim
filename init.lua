@@ -108,6 +108,7 @@ function M.init(key, win)
           win = tonumber(event.match),
         })
         winid = vim.api.nvim_get_current_win()
+        vim.w[winid].winbar = vim.wo[winid].winbar
       end
     end,
   })
