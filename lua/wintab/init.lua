@@ -31,8 +31,11 @@ end
 ---@return string
 ---@return integer
 function Component:render(active)
-  local label = self.label ~= '' and self.label
-    or string.format(' %s ', vim.api.nvim_buf_get_name(self.bufnr))
+  local label = self.label
+  if label == '' then
+    local bufname = vim.api.nvim_buf_get_name(self.bufnr)
+    label = string.format(' %s ', bufname == '' and '[No Name]' or bufname)
+  end
   local hl = active and 'WintabSel' or 'WintabNotSel'
   local click = string.format('%%%d@v:lua.wintab_handle_click@', self.bufnr)
   return string.format('%s%%#%s#%s', click, hl, label), vim.api.nvim_strwidth(label)
