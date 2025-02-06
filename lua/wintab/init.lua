@@ -1,8 +1,7 @@
 local utils = require('wintab.utils')
+local winbar_line = require('wintab.winbar-line')
 
 local M = {}
-
-local separator = ''
 
 vim.cmd([[
     hi default WintabSel    ctermfg=238 ctermbg=117 guifg=#444444 guibg=#8ac6f2
@@ -26,26 +25,36 @@ function Component.new(bufnr, label)
   return self
 end
 
----@param active? boolean
----@return string
----@return integer
-function Component:render(active)
+function Component:get_label()
   local label = self.label
   if label == '' then
     local bufname = vim.api.nvim_buf_get_name(self.bufnr)
     label = string.format(' %s ', bufname == '' and '[No Name]' or bufname)
   end
+  return label
+end
+
+---@param active? boolean
+---@param label? string
+---@return string
+---@return string
+function Component:render(active, label)
+  label = label or self:get_label()
   local hl = active and 'WintabSel' or 'WintabNotSel'
   local click = string.format('%%%d@v:lua.wintab_handle_click@', self.bufnr)
-  return string.format('%s%%#%s#%s', click, hl, label), vim.api.nvim_strwidth(label)
+  return string.format('%s%%#%s#%s', click, hl, label), label
 end
+
+---@class wintab.State
+---@field winid integer
+---@field selected integer
+---@field topi integer top index of window
 
 ---@class wintab.Wintab
 ---@field id string
----@field winid integer
 ---@field winbar string
 ---@field augroup integer
----@field state table
+---@field state wintab.State
 ---@field fn function
 local Wintab = {}
 Wintab.__index = Wintab
@@ -56,10 +65,13 @@ Wintab.__index = Wintab
 function Wintab.new(winid, winbar)
   local self = setmetatable({}, Wintab)
   self.id = 'wintab_' .. string.match(tostring(self), '0x%x+')
-  self.winid = winid
   self.winbar = winbar or ''
   self.augroup = vim.api.nvim_create_augroup(self.id, {})
-  self.state = {}
+  self.state = {
+    winid = winid,
+    selected = 1,
+    topi = 1,
+  }
   return self
 end
 
@@ -68,7 +80,7 @@ function Wintab:cleanup()
   M.unregister_callback(self.id)
 end
 
-function Wintab:active_buffer() return vim.api.nvim_win_get_buf(self.winid) end
+function Wintab:active_buffer() return vim.api.nvim_win_get_buf(self.state.winid) end
 
 function Wintab:next_buffer()
   local items = self.fn(self)
@@ -102,7 +114,7 @@ function Wintab:navigate(what)
     alter = self:next_buffer()
   end
   if alter ~= -1 and alter ~= active then
-    vim.api.nvim_win_set_buf(self.winid, alter)
+    vim.api.nvim_win_set_buf(self.state.winid, alter)
   end
 end
 
@@ -117,33 +129,30 @@ local function wintab_handle_click(minwid, clicks, button, modifiers) ---@diagno
   vim.api.nvim_set_current_win(winid)
 end
 
-local function adjust_by_width(items, width) return items end
-
 ---@param components wintab.Component[]
+---@param state? wintab.State
 ---@return string
-function M.winbar(components)
-  local renders = {}
-  local bufnr = vim.api.nvim_get_current_buf()
-  local total_width = 0
-  local active_width = 0
-  local active_index = 0
+function M.winbar(components, state)
+  state = state or {}
+  local elems = {}
+  local selected = state.selected or 1
+  local bufnr = vim.api.nvim_win_get_buf(state.winid or 0)
+  local win_width = vim.api.nvim_win_get_width(state.winid or 0)
   for idx, item in ipairs(components) do
     local active = item.bufnr == bufnr
-    local text, width = item:render(active)
-    total_width = total_width + width
     if active then
-      active_width = total_width
-      active_index = idx
+      selected = idx
     end
-    table.insert(renders, text)
+    table.insert(elems, { active = active, object = item, index = idx, label = item:get_label() })
   end
-  total_width = total_width + #separator * #components
-  active_width = active_width + #separator * active_index
-  local win_width = vim.api.nvim_win_get_width(0)
-  if total_width > win_width then
-    renders = adjust_by_width(renders, win_width)
+  local result, topi = winbar_line.render(elems, win_width, state.topi or 1, selected)
+  state.topi = topi
+  state.selected = selected
+  local renders = {}
+  for _, item in ipairs(result) do
+    table.insert(renders, (item.object:render(item.active, item.label)))
   end
-  return table.concat(renders, separator) .. '%#WintabFill#'
+  return table.concat(renders) .. '%#WintabFill#'
 end
 
 M.callback = {}
@@ -162,12 +171,16 @@ function M.register_callback(key, callback) M.callback[key] = callback end
 function M.unregister_callback(key) M.callback[key] = nil end
 
 M.wintab = function(key)
-  local func = M.callback[key or 'default']
-  if type(func) == 'function' then
-    local components = func()
+  local obj = M.callback[key or 'default']
+  local components = {}
+  if type(obj) == 'function' then
+    components = obj()
     return M.winbar(components or {})
+  else
+    components = obj.fn(obj)
+    require('utils').log_to_file(vim.inspect(obj))
+    return M.winbar(components or {}, obj.state)
   end
-  return ''
 end
 
 ---@param win? integer
@@ -178,13 +191,13 @@ function M.init(win, fn)
   local winbar = string.format('%%!v:lua.wintab("%s")', object.id)
   object.winbar = winbar
   object.fn = fn
-  M.register_callback(object.id, function() return fn(object) end)
+  M.register_callback(object.id, object)
   vim.api.nvim_create_autocmd('WinClosed', {
     group = object.augroup,
     callback = function(event)
       -- NOTE: event.match 的类型为 string
-      if tonumber(event.match) == object.winid then
-        local match_bufnr = vim.api.nvim_win_get_buf(object.winid)
+      if tonumber(event.match) == object.state.winid then
+        local match_bufnr = vim.api.nvim_win_get_buf(object.state.winid)
         local alter_bufnr = vim.fn.bufnr('#')
         local target_bufnr = -1
         -- 如果没有可用的轮转缓冲区的话, 那这个窗口就直接关闭就好了
@@ -209,14 +222,14 @@ function M.init(win, fn)
           split = 'above',
           win = tonumber(event.match),
         })
-        object.winid = vim.api.nvim_get_current_win()
-        vim.w[object.winid].winbar = vim.wo[object.winid].winbar
+        object.state.winid = vim.api.nvim_get_current_win()
+        vim.w[object.state.winid].winbar = vim.wo[object.state.winid].winbar
         -- NOTE: 用于修正在不同的 tabpage 删除缓冲时触发的窗口关闭
         vim.schedule(function() pcall(vim.api.nvim_win_close, tonumber(event.match), false) end)
       end
     end,
   })
-  vim.api.nvim_set_option_value('winbar', winbar, { win = object.winid })
+  vim.api.nvim_set_option_value('winbar', winbar, { win = object.state.winid })
   return object
 end
 
