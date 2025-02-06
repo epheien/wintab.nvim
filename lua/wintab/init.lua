@@ -46,6 +46,7 @@ end
 ---@field winbar string
 ---@field augroup integer
 ---@field state table
+---@field fn function
 local Wintab = {}
 Wintab.__index = Wintab
 
@@ -65,6 +66,44 @@ end
 function Wintab:cleanup()
   vim.api.nvim_del_augroup_by_id(self.augroup)
   M.unregister_callback(self.id)
+end
+
+function Wintab:active_buffer() return vim.api.nvim_win_get_buf(self.winid) end
+
+function Wintab:next_buffer()
+  local items = self.fn(self)
+  local active = self:active_buffer()
+  for i, item in ipairs(items) do
+    if item.bufnr == active then
+      return items[(i % #items) + 1].bufnr
+    end
+  end
+  return -1
+end
+
+function Wintab:prev_buffer()
+  local items = self.fn(self)
+  local active = self:active_buffer()
+  for i, item in ipairs(items) do
+    if item.bufnr == active then
+      return items[((i - 1 - 1) % #items) + 1].bufnr
+    end
+  end
+  return -1
+end
+
+---@param what string 'next' or 'prev'
+function Wintab:navigate(what)
+  local active = self:active_buffer()
+  local alter = active
+  if what == 'prev' then
+    alter = self:prev_buffer()
+  else
+    alter = self:next_buffer()
+  end
+  if alter ~= -1 and alter ~= active then
+    vim.api.nvim_win_set_buf(self.winid, alter)
+  end
 end
 
 ---@param minwid integer
@@ -138,6 +177,7 @@ function M.init(win, fn)
   local object = Wintab.new(win or vim.api.nvim_get_current_win())
   local winbar = string.format('%%!v:lua.wintab("%s")', object.id)
   object.winbar = winbar
+  object.fn = fn
   M.register_callback(object.id, function() return fn(object) end)
   vim.api.nvim_create_autocmd('WinClosed', {
     group = object.augroup,
