@@ -2,6 +2,8 @@ local M = {}
 
 local edge_width = 1
 
+local function strsub(str, i, j) return vim.fn.strcharpart(str, i - 1, j - i + 1) end
+
 ---@class Elem
 ---@field label string
 
@@ -55,7 +57,8 @@ local function calc_range_from_start(elems, width, start) ---@diagnostic disable
 end
 
 --- 从右到左
-local function calc_range_from_finish(elems, width, finish) ---@diagnostic disable-line)
+local function calc_range_from_finish(elems, width, finish, width2) ---@diagnostic disable-line)
+  width2 = width2 or width
   local remain = width
   for i = finish, 1, -1 do
     local label_width = vim.api.nvim_strwidth(get_label(elems[i]))
@@ -64,7 +67,8 @@ local function calc_range_from_finish(elems, width, finish) ---@diagnostic disab
       return i, finish, remain
     elseif remain < 0 then
       -- NOTE: 为了简化处理, 向左对齐, 这样 remain 就只代表右侧的余数
-      return calc_range_from_start(elems, width - edge_width, i + 1)
+      local start = i + 1
+      return calc_range_from_start(elems, width2 - (start == 1 and 0 or edge_width), start)
     end
   end
   return 1, finish, remain
@@ -99,7 +103,7 @@ local function calc_range(elems, win_width, topi, selected) ---@diagnostic disab
     return calc_range_from_start(elems, win_width - prefix_width, topi)
   else
     -- 从 selected 向左找开始的索引
-    return calc_range_from_finish(elems, win_width - suffix_width, selected)
+    return calc_range_from_finish(elems, win_width - suffix_width, selected, win_width)
   end
 end
 
@@ -125,17 +129,20 @@ local function render(elems, win_width, start, selected) ---@diagnostic disable-
     -- 如果 remain > 0 可从左侧显示更多的字符
     local length = edge_width - 1 + math.max(remain, 0)
     local label = get_label(elems[s - 1])
-    prefix = set_label(elems[s - 1], '<' .. label:sub(#label - length + 1, #label))
+    local label_width = vim.api.nvim_strwidth(label)
+    prefix = set_label(elems[s - 1], '<' .. strsub(label, label_width - length + 1, label_width))
   end
 
   if remain < 0 then
     center = vim.list_slice(elems, s, e - 1)
     local label = get_label(elems[e])
-    suffix = set_label(elems[e], label:sub(1, #label + remain - 1) .. '>')
+    local label_width = vim.api.nvim_strwidth(label)
+    suffix = set_label(elems[e], strsub(label, 1, label_width + remain - 1) .. '>')
   else
     center = vim.list_slice(elems, s, e)
     if e ~= #elems then
-      suffix = get_label(elems[e + 1]):sub(1, edge_width - 1) .. '>'
+      local label = get_label(elems[e + 1])
+      suffix = strsub(label, 1, edge_width - 1) .. '>'
       suffix = set_label(elems[e + 1], suffix)
     end
   end
