@@ -3,7 +3,6 @@ local utils = require('wintab.utils')
 local M = {}
 
 local separator = ''
-local wintab_augroup = vim.api.nvim_create_augroup('wintab', {})
 
 vim.cmd([[
     hi default WintabSel    ctermfg=238 ctermbg=117 guifg=#444444 guibg=#8ac6f2
@@ -42,6 +41,7 @@ function Component:render(active)
 end
 
 ---@class wintab.Wintab
+---@field id string
 ---@field winid integer
 ---@field winbar string
 ---@field augroup integer
@@ -49,17 +49,22 @@ end
 local Wintab = {}
 Wintab.__index = Wintab
 
+---@param winid integer
+---@param winbar? string
+---@return wintab.Wintab
 function Wintab.new(winid, winbar)
   local self = setmetatable({}, Wintab)
+  self.id = 'wintab_' .. string.match(tostring(self), '0x%x+')
   self.winid = winid
-  self.winbar = winbar
-  self.augroup = vim.api.nvim_create_augroup('wintab_' .. string.match(tostring(self), '0x%x+'), {})
+  self.winbar = winbar or ''
+  self.augroup = vim.api.nvim_create_augroup(self.id, {})
   self.state = {}
   return self
 end
 
 function Wintab:cleanup()
   vim.api.nvim_del_augroup_by_id(self.augroup)
+  M.unregister_callback(self.id)
 end
 
 ---@param minwid integer
@@ -102,18 +107,20 @@ function M.winbar(components)
   return table.concat(renders, separator) .. '%#WintabFill#'
 end
 
-M.callback = {
-  default = function()
-    local bufnrs = utils.get_valid_buffers()
-    local components = {}
-    for _, bufnr in ipairs(bufnrs) do
-      table.insert(components, Component.new(bufnr))
-    end
-    return components
-  end,
-}
+M.callback = {}
+
+function M.default_wintab_fn(_)
+  local bufnrs = utils.get_valid_buffers()
+  local components = {}
+  for _, bufnr in ipairs(bufnrs) do
+    table.insert(components, Component.new(bufnr))
+  end
+  return components
+end
 
 function M.register_callback(key, callback) M.callback[key] = callback end
+
+function M.unregister_callback(key) M.callback[key] = nil end
 
 M.wintab = function(key)
   local func = M.callback[key or 'default']
@@ -124,16 +131,14 @@ M.wintab = function(key)
   return ''
 end
 
----@param key? string
 ---@param win? integer
-function M.init(key, win)
-  key = key or 'default'
-  local callback = M.callback[key]
-  if not callback then
-    return
-  end
-  local winbar = string.format('%%!v:lua.wintab("%s")', key)
-  local object = Wintab.new(win or vim.api.nvim_get_current_win(), winbar)
+---@param fn? function
+function M.init(win, fn)
+  fn = fn or M.default_wintab_fn
+  local object = Wintab.new(win or vim.api.nvim_get_current_win())
+  local winbar = string.format('%%!v:lua.wintab("%s")', object.id)
+  object.winbar = winbar
+  M.register_callback(object.id, function() return fn(object) end)
   vim.api.nvim_create_autocmd('WinClosed', {
     group = object.augroup,
     callback = function(event)
@@ -143,7 +148,7 @@ function M.init(key, win)
         local alter_bufnr = vim.fn.bufnr('#')
         local target_bufnr = -1
         -- 如果没有可用的轮转缓冲区的话, 那这个窗口就直接关闭就好了
-        local components = callback()
+        local components = fn(object)
         for _, component in ipairs(components) do
           if component.bufnr == alter_bufnr and vim.api.nvim_buf_is_valid(component.bufnr) then
             target_bufnr = component.bufnr
