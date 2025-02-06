@@ -25,13 +25,13 @@ function Component.new(bufnr, label)
   return self
 end
 
-function Component:get_label()
+function Component:get_label(width)
   local label = self.label
   if label == '' then
     local bufname = vim.api.nvim_buf_get_name(self.bufnr)
     label = string.format(' %s ', bufname == '' and '[No Name]' or bufname)
   end
-  return label
+  return width and utils.truncate_string(label, width) or label
 end
 
 ---@param active? boolean
@@ -138,12 +138,18 @@ function M.winbar(components, state)
   local selected = state.selected or 1
   local bufnr = vim.api.nvim_win_get_buf(state.winid or 0)
   local win_width = vim.api.nvim_win_get_width(state.winid or 0)
+  local label_max_width = #components >= 2 and win_width - 2 or win_width
   for idx, item in ipairs(components) do
     local active = item.bufnr == bufnr
     if active then
       selected = idx
     end
-    table.insert(elems, { active = active, object = item, index = idx, label = item:get_label() })
+    table.insert(elems, {
+      active = active,
+      object = item,
+      index = idx,
+      label = item:get_label(label_max_width),
+    })
   end
   local result, topi = winbar_line.render(elems, win_width, state.topi or 1, selected)
   state.topi = topi
