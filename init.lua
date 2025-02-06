@@ -5,6 +5,12 @@ local M = {}
 local separator = ''
 local wintab_augroup = vim.api.nvim_create_augroup('wintab', {})
 
+vim.cmd([[
+    hi default WintabSel    ctermfg=238 ctermbg=117 guifg=#444444 guibg=#8ac6f2
+    hi default WintabNotSel ctermfg=247 ctermbg=240 guifg=#969696 guibg=#585858
+    hi default WintabFill   ctermfg=240 ctermbg=238 guifg=#585858 guibg=#444444
+]])
+
 ---@class wintab.Component
 ---@field bufnr integer
 ---@field label string
@@ -27,7 +33,7 @@ end
 function Component:render(active)
   local label = self.label ~= '' and self.label
     or string.format(' %s ', vim.api.nvim_buf_get_name(self.bufnr))
-  local hl = active and 'MyTabLineSel' or 'MyTabLineNotSel'
+  local hl = active and 'WintabSel' or 'WintabNotSel'
   local click = string.format('%%%d@v:lua.wintab_handle_click@', self.bufnr)
   return string.format('%s%%#%s#%s', click, hl, label), vim.api.nvim_strwidth(label)
 end
@@ -37,9 +43,9 @@ end
 ---@param button string
 ---@param modifiers string
 local function wintab_handle_click(minwid, clicks, button, modifiers) ---@diagnostic disable-line
-  local id = minwid -- minwid 可直接用于 id
+  local bufnr = minwid -- minwid 可直接用于 id
   --print('mouse click', id, clicks, button, modifiers)
-  vim.cmd.buffer(id)
+  vim.api.nvim_win_set_buf(0, bufnr)
 end
 
 local function adjust_by_width(items, width) return items end
@@ -68,7 +74,7 @@ function M.winbar(components)
   if total_width > win_width then
     renders = adjust_by_width(renders, win_width)
   end
-  return table.concat(renders, separator) .. '%#MyTabLineFill#'
+  return table.concat(renders, separator) .. '%#WintabFill#'
 end
 
 M.callback = {
