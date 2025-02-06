@@ -41,6 +41,27 @@ function Component:render(active)
   return string.format('%s%%#%s#%s', click, hl, label), vim.api.nvim_strwidth(label)
 end
 
+---@class wintab.Wintab
+---@field winid integer
+---@field winbar string
+---@field augroup integer
+---@field state table
+local Wintab = {}
+Wintab.__index = Wintab
+
+function Wintab.new(winid, winbar)
+  local self = setmetatable({}, Wintab)
+  self.winid = winid
+  self.winbar = winbar
+  self.augroup = vim.api.nvim_create_augroup('wintab_' .. string.match(tostring(self), '0x%x+'), {})
+  self.state = {}
+  return self
+end
+
+function Wintab:cleanup()
+  vim.api.nvim_del_augroup_by_id(self.augroup)
+end
+
 ---@param minwid integer
 ---@param clicks integer
 ---@param button string
@@ -107,17 +128,18 @@ end
 ---@param win? integer
 function M.init(key, win)
   key = key or 'default'
-  local winid = win or vim.api.nvim_get_current_win()
   local callback = M.callback[key]
   if not callback then
     return
   end
+  local winbar = string.format('%%!v:lua.wintab("%s")', key)
+  local object = Wintab.new(win or vim.api.nvim_get_current_win(), winbar)
   vim.api.nvim_create_autocmd('WinClosed', {
-    group = wintab_augroup,
+    group = object.augroup,
     callback = function(event)
       -- NOTE: event.match 的类型为 string
-      if tonumber(event.match) == winid then
-        local match_bufnr = vim.api.nvim_win_get_buf(winid)
+      if tonumber(event.match) == object.winid then
+        local match_bufnr = vim.api.nvim_win_get_buf(object.winid)
         local alter_bufnr = vim.fn.bufnr('#')
         local target_bufnr = -1
         -- 如果没有可用的轮转缓冲区的话, 那这个窗口就直接关闭就好了
@@ -142,18 +164,15 @@ function M.init(key, win)
           split = 'above',
           win = tonumber(event.match),
         })
-        winid = vim.api.nvim_get_current_win()
-        vim.w[winid].winbar = vim.wo[winid].winbar
+        object.winid = vim.api.nvim_get_current_win()
+        vim.w[object.winid].winbar = vim.wo[object.winid].winbar
         -- NOTE: 用于修正在不同的 tabpage 删除缓冲时触发的窗口关闭
         vim.schedule(function() pcall(vim.api.nvim_win_close, tonumber(event.match), false) end)
       end
     end,
   })
-  vim.api.nvim_set_option_value(
-    'winbar',
-    string.format('%%!v:lua.wintab("%s")', key),
-    { win = winid }
-  )
+  vim.api.nvim_set_option_value('winbar', winbar, { win = object.winid })
+  return object
 end
 
 _G.wintab = M.wintab
