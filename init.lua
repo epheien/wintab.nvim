@@ -44,8 +44,9 @@ end
 ---@param modifiers string
 local function wintab_handle_click(minwid, clicks, button, modifiers) ---@diagnostic disable-line
   local bufnr = minwid -- minwid 可直接用于 id
-  --print('mouse click', id, clicks, button, modifiers)
-  vim.api.nvim_win_set_buf(0, bufnr)
+  local winid = vim.fn.getmousepos().winid
+  vim.api.nvim_win_set_buf(winid, bufnr)
+  vim.api.nvim_set_current_win(winid)
 end
 
 local function adjust_by_width(items, width) return items end
